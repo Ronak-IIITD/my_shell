@@ -1,8 +1,34 @@
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unistd.h>
+#include <vector>
+
+namespace fs = std::filesystem;
+
+std::string get_path(std::string command) {
+  const char *get_env_cstr = std::getenv("PATH");
+  if (get_env_cstr == nullptr) {
+    return ""; // PATH not set!, can't find command
+  }
+  std::string path_env = get_env_cstr;
+  std::stringstream ss(path_env);
+  std::string path_dir;
+
+  while (std::getline(ss, path_dir, ':')) {
+    fs::path full_path = path_dir;
+    full_path /= command; // append command to directory (e.g., /usr/bin/ + ls)
+
+    // Check if file exists and is executable
+    if (fs::exists(full_path) && access(full_path.c_str(), X_OK) == 0) {
+      return full_path.string();
+    }
+  }
+  return "";
+}
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -51,7 +77,12 @@ int main() {
       } else {
         // You usually also need to handle cases where it's NOT found
         // for the "type" command
-        std::cout << remained_command << ": not found" << std::endl;
+        std::string path = get_path(remained_command);
+        if (!path.empty()) {
+          std::cout << remained_command << " is " << path << std::endl;
+        } else {
+          std::cout << remained_command << ": not found" << std::endl;
+        }
       }
     } else {
       // this only runs if the command was not as what we get in input is not
