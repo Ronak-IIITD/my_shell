@@ -40,35 +40,25 @@ int main() {
         remaining = remaining.substr(1);
       }
       std::cout << remaining << std::endl;
+    } else if (command_name == "type") {
+      std::string remained_command;
+      // Use >> to skip the whitespace and get the next word cleanly
+      ss >> remained_command;
+
+      if (remained_command == "echo" || remained_command == "exit" ||
+          remained_command == "type") {
+        std::cout << remained_command << " is a shell builtin" << std::endl;
+      } else {
+        // You usually also need to handle cases where it's NOT found
+        // for the "type" command
+        std::cout << remained_command << ": not found" << std::endl;
+      }
     } else {
       // this only runs if the command was not as what we get in input is not
-      // valid command
+      // a valid command
       std::cout << command << ": command not found" << std::endl;
     }
 
     std::cout << "$ ";
-
-    //   if (command == "exit") {
-    //     return 0;
-    //   }
-
-    //   std::stringstream ss(command);
-    //   std::string word;
-    //   while (ss >> word) {
-    //     if (word == "echo") {
-    //       std::string remaining;
-    //       std::getline(ss, remaining);
-
-    //       if (!remaining.empty() && remaining[0] == ' ') {
-    //         remaining = remaining.substr(1);
-    //       }
-    //       std::cout << remaining << std::endl;
-    //       break;
-    //     }
-    //   }
-
-    //   std::cout << command << ": command not found" << std::endl;
-    //   std::cout << "$ ";
-    // }
   }
 }
