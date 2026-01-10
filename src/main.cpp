@@ -4,6 +4,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <sys/types.h>
+#include <sys/wait.h> //required for wait
 #include <unistd.h>
 #include <vector>
 
@@ -28,6 +30,31 @@ std::string get_path(std::string command) {
     }
   }
   return "";
+}
+
+void execute_external(const std::string &path,
+                      const std::vector<std::string> &parts) {
+  // 1) convert std::vector<std::string> to char* array (c-style)
+  std::vector<char *> c_args;
+  for (const auto &part : parts) {
+    c_args.push_back(const_cast<char *>(part.c_str()));
+  }
+  c_args.push_back(nullptr); // null terminates the list otherwise it will give
+                             // segmentation fault error
+
+  // fork and execute
+  pid_t pid = fork();
+
+  if (pid == 0) {
+    // child process
+    execv(path.c_str(), c_args.data());
+    exit(1); // should only reach here if execv fails
+  } else if (pid > 0) {
+    // parent process
+    wait(nullptr);
+  } else {
+    std::cerr << "Fork Failed" << std::endl;
+  }
 }
 
 int main() {
@@ -85,9 +112,24 @@ int main() {
         }
       }
     } else {
-      // this only runs if the command was not as what we get in input is not
-      // a valid command
-      std::cout << command << ": command not found" << std::endl;
+      // ---- RUNNING EXTERNAL PROGRAMS ----
+      std::string path = get_path(command_name);
+
+      if (path.empty()) {
+        std::cout << command_name << ": command not found" << std::endl;
+      } else {
+        // collect all arguments including the command name itself
+        std::vector<std::string> args;
+        args.push_back(command_name);
+
+        std::string arg;
+        while (ss >> arg) {
+          args.push_back(arg);
+        }
+
+        // just one clearn function call
+        execute_external(path, args);
+      }
     }
 
     std::cout << "$ ";
