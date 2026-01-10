@@ -1,7 +1,9 @@
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <limits.h>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -57,6 +59,28 @@ void execute_external(const std::string &path,
   }
 }
 
+// manual implementation to get pwd without current_path() :)
+
+// std::string get_pwd() {
+// PATH_MAX is usually defined in limits.h (often 4096 bytes)
+// If not defined, we fallback to 4096.
+// #ifndef PATH_MAX
+// #define PATH_MAX 4096
+// #endif
+
+// char buffer[PATH_MAX];
+
+// getcwd(buffer, size);
+// Returns a pointer to buffer on success, or NULL on failure.
+// if (getcwd(buffer, sizeof(buffer)) != nullptr){
+//   return std::string(buffer);
+// } else {
+// If it fails (e.g., path is too long), print a system error
+//     perror("pwd error");
+//     return "";
+//   }
+// }
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -99,7 +123,7 @@ int main() {
       ss >> remained_command;
 
       if (remained_command == "echo" || remained_command == "exit" ||
-          remained_command == "type") {
+          remained_command == "type" || remained_command == "pwd") {
         std::cout << remained_command << " is a shell builtin" << std::endl;
       } else {
         // You usually also need to handle cases where it's NOT found
@@ -111,7 +135,21 @@ int main() {
           std::cout << remained_command << ": not found" << std::endl;
         }
       }
+    } else if (command_name == "pwd") {
+      // manual function calling
+
+      // std::string cwd=get_pwd();
+
+      // if (!cwd.empty()) {
+      //   std::cout<<cwd<<std::endl;
+      // }
+      // We do NOT write 'return 0' here.
+      // We let the loop finish so the user can type the next command.
+
+      // directly come from filesystem :)
+      std::cout << fs::current_path().string() << std::endl;
     } else {
+
       // ---- RUNNING EXTERNAL PROGRAMS ----
       std::string path = get_path(command_name);
 
