@@ -68,7 +68,21 @@ void execute_external(const std::string &path,
 // --builtin-cd --
 // this function handles the logic to change the directory
 
-void builtin_cd(const std::string &path) {
+void builtin_cd(std::string &path) {
+
+  // for checking home directory
+  if (path == "~") {
+    const char *home = std::getenv("HOME");
+    if (home) {
+      path = home;
+    }
+  } else if (path.substr(0, 2) == "~/") {
+    const char *home = std::getenv("HOME");
+    if (home) {
+      // replace "~" with the actual home path
+      path = std::string(home) + path.substr(1);
+    }
+  }
   // check if the directory exists and is actually a directory
   if (fs::exists(path) && fs::is_directory(path)) {
     // this tells the operating systeme to change the directory
