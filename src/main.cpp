@@ -1,9 +1,11 @@
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <limits.h>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -56,6 +58,29 @@ void execute_external(const std::string &path,
     wait(nullptr);
   } else {
     std::cerr << "Fork Failed" << std::endl;
+  }
+}
+
+// Source - https://stackoverflow.com/a/69847310
+// Posted by Remy Lebeau, modified by community. See post 'Timeline' for change
+// history Retrieved 2026-01-11, License - CC BY-SA 4.0
+
+// --builtin-cd --
+// this function handles the logic to change the directory
+
+void builtin_cd(const std::string &path) {
+  // check if the directory exists and is actually a directory
+  if (fs::exists(path) && fs::is_directory(path)) {
+    // this tells the operating systeme to change the directory
+    // equivalent to the c function chdir()
+    try {
+      fs::current_path(path);
+    } catch (const fs::filesystem_error &e) {
+      // should permission fail, etc.
+      std::cerr << "cd: " << path << ": " << e.what() << std::endl;
+    }
+  } else {
+    std::cout << "cd: " << path << ": No such file or directory" << std::endl;
   }
 }
 
@@ -123,7 +148,8 @@ int main() {
       ss >> remained_command;
 
       if (remained_command == "echo" || remained_command == "exit" ||
-          remained_command == "type" || remained_command == "pwd") {
+          remained_command == "type" || remained_command == "pwd" ||
+          remained_command == "cd") {
         std::cout << remained_command << " is a shell builtin" << std::endl;
       } else {
         // You usually also need to handle cases where it's NOT found
@@ -148,6 +174,10 @@ int main() {
 
       // directly come from filesystem :)
       std::cout << fs::current_path().string() << std::endl;
+    } else if (command_name == "cd") {
+      std::string arg;
+      ss >> arg; // extract the path arguments
+      builtin_cd(arg);
     } else {
 
       // ---- RUNNING EXTERNAL PROGRAMS ----
