@@ -68,7 +68,7 @@ void execute_external(const std::string &path,
 // --builtin-cd --
 // this function handles the logic to change the directory
 
-void builtin_cd(std::string &path) {
+void builtin_cd(std::string path) {
 
   // for checking home directory
   if (path == "~") {
@@ -96,6 +96,36 @@ void builtin_cd(std::string &path) {
   } else {
     std::cout << "cd: " << path << ": No such file or directory" << std::endl;
   }
+}
+
+// --- PARSER: Handle Single Quotes ---
+std::vector<std::string> split_line(const std::string &input) {
+  std::vector<std::string> args;
+  std::string current_tokens;
+  bool in_quotes = false; // are we currently inside '...'?
+
+  for (size_t i = 0; i < input.length(); i++) {
+    char c = input[i];
+
+    if (c == '\'') {
+      // found a quote: toggle state, do NOT add the quote char to token
+      in_quotes = !in_quotes;
+    } else if (c == ' ' && !in_quotes) {
+      // found a space outside quotes: End of current token
+      if (!current_tokens.empty()) {
+        args.push_back(current_tokens);
+        current_tokens.clear();
+      }
+    } else {
+      // normal character (or spaces inside quotes) : Add to token
+      current_tokens += c;
+    }
+  }
+  // push the last token if exists
+  if (!current_tokens.empty()) {
+    args.push_back(current_tokens);
+  }
+  return args;
 }
 
 // manual implementation to get pwd without current_path() :)
@@ -130,49 +160,48 @@ int main() {
   std::string command;
 
   while (std::getline(std::cin, command)) {
-
     if (command.empty()) {
       std::cout << "$ ";
       continue;
     }
 
-    std::stringstream ss(command);
-    std::string command_name;
+    // parse the input using split_line now not by stringstream
+    std::vector<std::string> args = split_line(command);
 
-    // extract the first word
-    ss >> command_name;
+    // if parsing resulted in empty (eg: just spaces), continue
+    if (args.empty()) {
+      std::cout << "$ ";
+      continue;
+    }
+
+    std::string command_name = args[0];
 
     if (command_name == "exit") {
       return 0;
     } else if (command_name == "echo") {
-      std::string remaining;
-      // get the rest of the line
-      std::getline(ss, remaining);
-
-      // Trim the leading space that getline picks up
-      // (operator>> skips whitespace, but getline reads from the very next
-      // character)
-      if (!remaining.empty() && remaining[0] == ' ') {
-        remaining = remaining.substr(1);
+      // print arguments separated by space
+      for (size_t i = 1; i < args.size(); i++) {
+        std::cout << args[i];
+        if (i < args.size() - 1) {
+          std::cout << " ";
+        }
       }
-      std::cout << remaining << std::endl;
+      std::cout << std::endl;
     } else if (command_name == "type") {
-      std::string remained_command;
-      // Use >> to skip the whitespace and get the next word cleanly
-      ss >> remained_command;
-
-      if (remained_command == "echo" || remained_command == "exit" ||
-          remained_command == "type" || remained_command == "pwd" ||
-          remained_command == "cd") {
-        std::cout << remained_command << " is a shell builtin" << std::endl;
+      if (args.size() < 2) {
+        // just 'type' with no args, do nothing or print usage
       } else {
-        // You usually also need to handle cases where it's NOT found
-        // for the "type" command
-        std::string path = get_path(remained_command);
-        if (!path.empty()) {
-          std::cout << remained_command << " is " << path << std::endl;
+        std::string arg = args[1];
+        if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" ||
+            arg == "cd") {
+          std::cout << arg << " is a shell builtin" << std::endl;
         } else {
-          std::cout << remained_command << ": not found" << std::endl;
+          std::string path = get_path(arg);
+          if (!path.empty()) {
+            std::cout << arg << " is " << path << std::endl;
+          } else {
+            std::cout << arg << ": not found" << std::endl;
+          }
         }
       }
     } else if (command_name == "pwd") {
@@ -189,9 +218,13 @@ int main() {
       // directly come from filesystem :)
       std::cout << fs::current_path().string() << std::endl;
     } else if (command_name == "cd") {
-      std::string arg;
-      ss >> arg; // extract the path arguments
-      builtin_cd(arg);
+      if (args.size() >= 2) {
+        builtin_cd(args[1]);
+      } else {
+        // 'cd' with no arguments usually goes home, but for test we can ignore
+        // or go home
+        builtin_cd("~");
+      }
     } else {
 
       // ---- RUNNING EXTERNAL PROGRAMS ----
@@ -200,16 +233,8 @@ int main() {
       if (path.empty()) {
         std::cout << command_name << ": command not found" << std::endl;
       } else {
-        // collect all arguments including the command name itself
-        std::vector<std::string> args;
-        args.push_back(command_name);
-
-        std::string arg;
-        while (ss >> arg) {
-          args.push_back(arg);
-        }
-
-        // just one clearn function call
+        // execute_external takes the vector, which is already correctly parsed!
+        // it will clean arguments (without quotes) to the program.
         execute_external(path, args);
       }
     }
