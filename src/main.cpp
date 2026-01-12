@@ -102,16 +102,20 @@ void builtin_cd(std::string path) {
 std::vector<std::string> split_line(const std::string &input) {
   std::vector<std::string> args;
   std::string current_tokens;
-  bool in_quotes = false; // are we currently inside '...'?
+  bool in_single_quotes = false; // are we currently inside '...'?
+  bool in_double_quotes = false; // are we currently inside "..."?
 
   for (size_t i = 0; i < input.length(); i++) {
     char c = input[i];
 
-    if (c == '\'') {
-      // found a quote: toggle state, do NOT add the quote char to token
-      in_quotes = !in_quotes;
-    } else if (c == ' ' && !in_quotes) {
-      // found a space outside quotes: End of current token
+    // 1. Handle Single Quotes (only if not in double quotes)
+    if (c == '\'' && !in_double_quotes) {
+      in_single_quotes = !in_single_quotes;
+    } // 2. Handle Double Quotes (only if not in single quotes)
+    else if (c == '"' && !in_single_quotes) {
+      in_double_quotes = !in_double_quotes;
+    } // 3. Handle Spaces (only if not in ANY quotes)
+    else if (c == ' ' && !in_double_quotes && !in_single_quotes) {
       if (!current_tokens.empty()) {
         args.push_back(current_tokens);
         current_tokens.clear();
