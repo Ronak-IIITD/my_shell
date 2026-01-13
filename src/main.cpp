@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <iostream>
 #include <limits.h>
@@ -165,6 +166,27 @@ std::vector<std::string> split_line(const std::string &input) {
   return args;
 }
 
+std::string parse_redirection(std::vector<std::string> &args) {
+  for (size_t i = 0; i < args.size(); i++) {
+    // check for ">" or "1>"
+    if (args[i] == ">" || args[i] == "1>") {
+      if (i + 1 < args.size()) {
+        std::string filename = args[i + 1];
+
+        // remove the operator and filename from the arguments
+        // so the command (eg: echo) doesn't see them
+        args.erase(args.begin() + i, args.begin() + i + 2);
+        return filename;
+      } else {
+        std::cerr << "Syntax error: expected filename after redirection"
+                  << std::endl;
+        return "";
+      }
+    }
+  }
+  return ""; // no redirection found
+}
+
 // manual implementation to get pwd without current_path() :)
 
 // std::string get_pwd() {
@@ -210,6 +232,37 @@ int main() {
       std::cout << "$ ";
       continue;
     }
+
+    // redirection logic start
+    std::string redirect_file = parse_redirection(args);
+
+    int saved_stdout = -1;
+    int file_fd = -1;
+
+    if (!redirect_file.empty()) {
+      // save the current standard output (terminal) so we can restore it later
+      saved_stdout = dup(STDOUT_FILENO);
+
+      // open the file (write only, create if missing, truncate/overwrite)
+      // 0644 gives read/write permission to user. read to others
+      file_fd = open(redirect_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+      if (file_fd < 0) {
+        std::cerr << "bash: " << redirect_file << ": No such file or directory"
+                  << std::endl;
+        // fix - Print prompt before restarting loop
+        std::cout << "$ ";
+        // If we dup'd but failed open, close the dup
+        close(saved_stdout);
+        continue;
+      }
+      // replace standard output (1) with out file
+      dup2(file_fd, STDOUT_FILENO);
+      close(file_fd); // we dont need the raw file descriptor anymore
+    }
+    // redirection logic end
+
+    // normal command execution (standard output is now pointing to the file)
 
     std::string command_name = args[0];
 
@@ -274,6 +327,13 @@ int main() {
         // it will clean arguments (without quotes) to the program.
         execute_external(path, args);
       }
+    }
+
+    // restore stdout
+    if (saved_stdout != -1) {
+      // restore terminal output
+      dup2(saved_stdout, STDOUT_FILENO);
+      close(saved_stdout);
     }
 
     std::cout << "$ ";
