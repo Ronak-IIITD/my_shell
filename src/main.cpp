@@ -108,24 +108,57 @@ std::vector<std::string> split_line(const std::string &input) {
   for (size_t i = 0; i < input.length(); i++) {
     char c = input[i];
 
-    // 1. Handle Single Quotes (only if not in double quotes)
+    // 1) Handle Backslashes (\)
+    // we handle Backslashes first because they can escape quotes too (eg: \")
+    if (c == '\\') {
+      // case A: inside single quotes ('....')
+      // Backslashes are not special inside the single quotes. they are just
+      // text
+      if (in_single_quotes) {
+        current_tokens += c;
+      }
+      // case B: inside the double quotes ("....")
+      // Backslashes only escape specific characters: \, ", $, and newline
+      else if (in_double_quotes) {
+        if (i + 1 < input.length()) {
+          char next_c = input[i + 1];
+          // if the next char is one of the special ones, escape it
+          if (next_c == '\\' || next_c == '"' || next_c == '$' ||
+              next_c == '\n') {
+            current_tokens += next_c;
+            i++; // skip the next character (we just consumed it)
+          } else {
+            // otherwise, keep the Backslashe literal (eg: "\a" -> "\a")
+            current_tokens += c;
+          }
+        } else {
+          current_tokens += c; // trailing Backslashes at the end of string
+        }
+      }
+      // case C: outside quotes
+      // the Backslashes escapes any character that follows in
+      else {
+        if (i + 1 < input.length()) {
+          current_tokens += input[i + 1]; // add the next char literally
+          i++; // skip the next character (we just consumed it)
+        }
+      }
+      continue;
+    }
+    // 2) handle quotes and spaces
     if (c == '\'' && !in_double_quotes) {
       in_single_quotes = !in_single_quotes;
-    } // 2. Handle Double Quotes (only if not in single quotes)
-    else if (c == '"' && !in_single_quotes) {
+    } else if (c == '"' && !in_single_quotes) {
       in_double_quotes = !in_double_quotes;
-    } // 3. Handle Spaces (only if not in ANY quotes)
-    else if (c == ' ' && !in_double_quotes && !in_single_quotes) {
+    } else if (c == ' ' && !in_single_quotes && !in_double_quotes) {
       if (!current_tokens.empty()) {
         args.push_back(current_tokens);
         current_tokens.clear();
       }
     } else {
-      // normal character (or spaces inside quotes) : Add to token
       current_tokens += c;
     }
   }
-  // push the last token if exists
   if (!current_tokens.empty()) {
     args.push_back(current_tokens);
   }
