@@ -1,3 +1,4 @@
+#include <cinttypes>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +20,7 @@ namespace fs = std::filesystem;
 struct RedirectionInfo {
   std::string filename;
   int target_fd; // 1 for stdout, 2 for stderr, -1 for none
+  bool append;   // true=append (>>), false=overwrite (>)
 };
 
 std::string get_path(std::string command) {
@@ -173,21 +175,41 @@ std::vector<std::string> split_line(const std::string &input) {
 
 RedirectionInfo parse_redirection(std::vector<std::string> &args) {
 
-  RedirectionInfo info = {"", -1}; // default: no redirection
+  RedirectionInfo info = {"", -1, false}; // default: no redirection
 
   for (size_t i = 0; i < args.size(); i++) {
-    // check for stdout redirection (1> or >)
+    // ">" operator to redirect standard output to a file
     if (args[i] == ">" || args[i] == "1>") {
       if (i + 1 < args.size()) {
         info.filename = args[i + 1];
-        info.target_fd = STDOUT_FILENO; // 1
+        info.target_fd = 1; // 1
+        info.append = false;
         args.erase(args.begin() + i, args.begin() + i + 2);
         return info;
       }
-    } else if (args[i] == "2>") {
+    } else if (args[i] == ">>" || args[i] == "1>>") {
       if (i + 1 < args.size()) {
         info.filename = args[i + 1];
-        info.target_fd = STDERR_FILENO; // 2
+        info.target_fd = 1; // always standard output (1)
+        info.append = true; // enable append mode
+        args.erase(args.begin() + i, args.begin() + i + 2);
+        return info;
+      }
+    } // standard error overwrite (2>)
+    else if (args[i] == "2>") {
+      if (i + 1 < args.size()) {
+        info.filename = args[i + 1];
+        info.target_fd = 2; // 2
+        info.append = false;
+        args.erase(args.begin() + i, args.begin() + i + 2);
+        return info;
+      }
+    } // standard error append (2>>)
+    else if (args[i] == "2>>") {
+      if (i + 1 < args.size()) {
+        info.filename = args[i + 1];
+        info.target_fd = 2;
+        info.append = true;
         args.erase(args.begin() + i, args.begin() + i + 2);
         return info;
       }
@@ -253,10 +275,19 @@ int main() {
       // 1) save the original stream (stdout or stderr)
       saved_stdout = dup(redirect_file.target_fd);
 
+      // Decide Flags:
+      // always write only+create
+      // if append is true->O_APPEND. if false -> O_TRUNC (overwrite).
+      int flags = O_WRONLY | O_CREAT;
+      if (redirect_file.append) {
+        flags |= O_APPEND;
+      } else {
+        flags |= O_TRUNC;
+      }
+
       // open the file (write only, create if missing, truncate/overwrite)
       // 0644 gives read/write permission to user. read to others
-      file_fd = open(redirect_file.filename.c_str(),
-                     O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      file_fd = open(redirect_file.filename.c_str(), flags, 0644);
 
       if (file_fd < 0) {
         std::cerr << "bash: " << redirect_file.filename
