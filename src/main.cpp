@@ -16,6 +16,11 @@
 
 namespace fs = std::filesystem;
 
+struct RedirectionInfo {
+  std::string filename;
+  int target_fd; // 1 for stdout, 2 for stderr, -1 for none
+};
+
 std::string get_path(std::string command) {
   const char *get_env_cstr = std::getenv("PATH");
   if (get_env_cstr == nullptr) {
@@ -166,25 +171,29 @@ std::vector<std::string> split_line(const std::string &input) {
   return args;
 }
 
-std::string parse_redirection(std::vector<std::string> &args) {
+RedirectionInfo parse_redirection(std::vector<std::string> &args) {
+
+  RedirectionInfo info = {"", -1}; // default: no redirection
+
   for (size_t i = 0; i < args.size(); i++) {
-    // check for ">" or "1>"
+    // check for stdout redirection (1> or >)
     if (args[i] == ">" || args[i] == "1>") {
       if (i + 1 < args.size()) {
-        std::string filename = args[i + 1];
-
-        // remove the operator and filename from the arguments
-        // so the command (eg: echo) doesn't see them
+        info.filename = args[i + 1];
+        info.target_fd = STDOUT_FILENO; // 1
         args.erase(args.begin() + i, args.begin() + i + 2);
-        return filename;
-      } else {
-        std::cerr << "Syntax error: expected filename after redirection"
-                  << std::endl;
-        return "";
+        return info;
+      }
+    } else if (args[i] == "2>") {
+      if (i + 1 < args.size()) {
+        info.filename = args[i + 1];
+        info.target_fd = STDERR_FILENO; // 2
+        args.erase(args.begin() + i, args.begin() + i + 2);
+        return info;
       }
     }
   }
-  return ""; // no redirection found
+  return info;
 }
 
 // manual implementation to get pwd without current_path() :)
@@ -234,22 +243,24 @@ int main() {
     }
 
     // redirection logic start
-    std::string redirect_file = parse_redirection(args);
+    RedirectionInfo redirect_file = parse_redirection(args);
 
     int saved_stdout = -1;
     int file_fd = -1;
 
-    if (!redirect_file.empty()) {
-      // save the current standard output (terminal) so we can restore it later
-      saved_stdout = dup(STDOUT_FILENO);
+    // check if we found a redirection operator (either > or 2>)
+    if (redirect_file.target_fd != -1) {
+      // 1) save the original stream (stdout or stderr)
+      saved_stdout = dup(redirect_file.target_fd);
 
       // open the file (write only, create if missing, truncate/overwrite)
       // 0644 gives read/write permission to user. read to others
-      file_fd = open(redirect_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      file_fd = open(redirect_file.filename.c_str(),
+                     O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
       if (file_fd < 0) {
-        std::cerr << "bash: " << redirect_file << ": No such file or directory"
-                  << std::endl;
+        std::cerr << "bash: " << redirect_file.filename
+                  << ": No such file or directory" << std::endl;
         // fix - Print prompt before restarting loop
         std::cout << "$ ";
         // If we dup'd but failed open, close the dup
@@ -257,7 +268,7 @@ int main() {
         continue;
       }
       // replace standard output (1) with out file
-      dup2(file_fd, STDOUT_FILENO);
+      dup2(file_fd, redirect_file.target_fd);
       close(file_fd); // we dont need the raw file descriptor anymore
     }
     // redirection logic end
@@ -329,10 +340,10 @@ int main() {
       }
     }
 
-    // restore stdout
+    // restore
     if (saved_stdout != -1) {
-      // restore terminal output
-      dup2(saved_stdout, STDOUT_FILENO);
+      // restore the specific FD (stdout or stderr)
+      dup2(saved_stdout, redirect_file.target_fd);
       close(saved_stdout);
     }
 
