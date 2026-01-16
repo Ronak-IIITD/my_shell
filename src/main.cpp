@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cinttypes>
 #include <cstddef>
 #include <cstdio>
@@ -5,6 +6,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <ios>
 #include <iostream>
 #include <limits.h>
 #include <new>
@@ -340,6 +342,85 @@ char **shell_completion(const char *text, int start, int end) {
 //   }
 // }
 
+void execute_pipeline(const std::vector<std::string> &left_args,
+                      const std::vector<std::string> &right_args) {
+  int pipefd[2];
+
+  // create the pipe
+  // pipefd[0] is reading, pipefd[1] is for writing
+  if (pipe(pipefd) == -1) {
+    perror("pipe");
+    return;
+  }
+
+  // 1) Left Command (Writer)
+  pid_t pid1 = fork();
+  if (pid1 == 0) {
+    // child 1
+
+    // connect stdout (1) to pipe write end (pipefd[1])
+    dup2(pipefd[1], STDOUT_FILENO);
+
+    // close both ends of the pipe (we have our copy in STDOUT now)
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    // find and run the Program
+    // note: we duplicate logic slightly here because we don't want to fork
+    // again
+    std::string path = get_path(left_args[0]);
+    if (path.empty()) {
+      std::cerr << left_args[0] << ": command not found" << std::endl;
+      exit(1);
+    }
+
+    std::vector<char *> c_args;
+    for (const auto &arg : left_args) {
+      c_args.push_back(const_cast<char *>(arg.c_str()));
+    }
+    c_args.push_back(nullptr);
+
+    execv(path.c_str(), c_args.data());
+    exit(1); // error if execv fails
+  }
+
+  // 2) Right Command (Reader)
+  pid_t pid2 = fork();
+  if (pid2 == 0) {
+    // child 2
+
+    // connect stdin (0) to pipe read end (pipefd[0])
+    dup2(pipefd[0], STDIN_FILENO);
+
+    // close both ends (we have our copy in STDIN now)
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::string path = get_path(right_args[0]);
+    if (path.empty()) {
+      std::cerr << right_args[0] << ": command not found" << std::endl;
+      exit(1);
+    }
+    std::vector<char *> c_args;
+    for (const auto &arg : right_args) {
+      c_args.push_back(const_cast<char *>(arg.c_str()));
+    }
+    c_args.push_back(nullptr);
+
+    execv(path.c_str(), c_args.data());
+    exit(1);
+  }
+  // 3) Parent
+  // imp: close both ends of the pipe in the parent!
+  // if you dont close pipefd[1], the reader will wait forever for more data
+  close(pipefd[0]);
+  close(pipefd[1]);
+
+  // wait for both childrens to finish
+  waitpid(pid1, nullptr, 0);
+  waitpid(pid2, nullptr, 0);
+}
+
 int main() {
   // Use unitbuf to ensure output is flushed immediately
   std::cout << std::unitbuf;
@@ -375,6 +456,29 @@ int main() {
     std::vector<std::string> args = split_line(input_line);
     if (args.empty())
       continue;
+
+    // --CHECK FOR PIPELINE--
+    // look for "|" in the arguments
+    auto it = std::find(args.begin(), args.end(), "|");
+    if (it != args.end()) {
+      // found a pipe!
+
+      // 1) split args into left and right parts
+      // left: from begin to pipe
+      std::vector<std::string> left_cmd(args.begin(), it);
+
+      // right: from pipe+1 to end
+      std::vector<std::string> right_cmd(it + 1, args.end());
+
+      if (left_cmd.empty() || right_cmd.empty()) {
+        std::cerr << "Syntax error: pipe needs commands on both sides"
+                  << std::endl;
+      } else {
+        execute_pipeline(left_cmd, right_cmd);
+      }
+      continue;
+    }
+    // --END PIPELINE CHECK--
 
     // 4. HANDLE REDIRECTION
     RedirectionInfo redir = parse_redirection(args);
