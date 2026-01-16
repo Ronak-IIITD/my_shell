@@ -7,9 +7,11 @@
 #include <filesystem>
 #include <iostream>
 #include <limits.h>
+#include <new>
 #include <ostream>
 #include <readline/history.h>
 #include <readline/readline.h> //readline headers
+#include <set>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -231,24 +233,74 @@ RedirectionInfo parse_redirection(std::vector<std::string> &args) {
 // We return the next match, or nullptr when done.
 
 char *command_generator(const char *text, int state) {
-  static size_t list_index;
-  static int len;
+  // Static variables persist between calls during the same TAB session
+  static std::vector<std::string> matches;
+  static size_t match_index = 0;
 
-  if (!state) {
-    list_index = 0;
-    len = strlen(text);
-  }
+  // State 0 = first call for this TAB press. We must find all matches now
+  if (state == 0) {
+    matches.clear();
+    match_index = 0;
 
-  while (list_index < builtin_commands.size()) {
-    const char *name = builtin_commands[list_index].c_str();
-    list_index++;
+    std::string text_str(text);
+    std::set<std::string> found; // to avoid duplicates
 
-    // if the builtin_commands name starts with the text user typed
-    if (strncmp(name, text, len) == 0) {
-      // return a duplicate because readline frees the memory later
-      return strdup(name);
+    // 1) search builtin_commands
+    for (const auto &cmd : builtin_commands) {
+      // check if builtin starts with 'text'
+      if (cmd.find(text_str) == 0) {
+        matches.push_back(cmd);
+        found.insert(cmd);
+      }
+    }
+    // 2) search for path executable
+    const char *path_env = std::getenv("PATH");
+    if (path_env) {
+      std::string path_str = path_env;
+      std::stringstream ss(path_str);
+      std::string dir;
+
+      while (std::getline(ss, dir, ':')) {
+        fs::path p(dir);
+
+        // gracefully handle directories that don't exists
+        if (!fs::exists(p) || !fs::is_directory(p))
+          continue;
+
+        // iterate over files in the directory
+        try {
+          for (const auto &entry : fs::directory_iterator(p)) {
+            // skip if not a regular file (eg: skip directories/ socekts inside
+            // bin)
+            if (!entry.is_regular_file())
+              continue;
+            std::string filename = entry.path().filename().string();
+
+            // check if filename starts with what user typed
+            if (filename.find(text_str) == 0) {
+              // check if file is executable (X_OK)
+              // this filters out README's or other non-program files
+              if (access(entry.path().c_str(), X_OK) == 0) {
+                // only add if we haven't seen this command yet
+                if (found.find(filename) == found.end()) {
+                  matches.push_back(filename);
+                  found.insert(filename);
+                }
+              }
+            }
+          }
+        } catch (...) {
+          // ignore permission errors (eg: if we can't read a directory)
+        }
+      }
     }
   }
+  // return the next match on our list
+  if (match_index < matches.size()) {
+    // readline requires us to return a malloc'd string (strdup does this)
+    return strdup(matches[match_index++].c_str());
+  }
+  // no more matches
   return nullptr;
 }
 
@@ -285,151 +337,6 @@ char **shell_completion(const char *text, int start, int end) {
 // If it fails (e.g., path is too long), print a system error
 //     perror("pwd error");
 //     return "";
-//   }
-// }
-
-// int main() {
-//   // Flush after every std::cout / std:cerr
-//   std::cout << std::unitbuf;
-//   std::cerr << std::unitbuf;
-//
-//   // TODO: Uncomment the code below to pass the first stage
-//   std::cout << "$ ";
-//   std::string command;
-//
-//   while (std::getline(std::cin, command)) {
-//     if (command.empty()) {
-//       std::cout << "$ ";
-//       continue;
-//     }
-//
-//     // parse the input using split_line now not by stringstream
-//     std::vector<std::string> args = split_line(command);
-//
-//     // if parsing resulted in empty (eg: just spaces), continue
-//     if (args.empty()) {
-//       std::cout << "$ ";
-//       continue;
-//     }
-//
-//     // redirection logic start
-//     RedirectionInfo redirect_file = parse_redirection(args);
-//
-//     int saved_stdout = -1;
-//     int file_fd = -1;
-//
-//     // check if we found a redirection operator (either > or 2>)
-//     if (redirect_file.target_fd != -1) {
-//       // 1) save the original stream (stdout or stderr)
-//       saved_stdout = dup(redirect_file.target_fd);
-//
-//       // Decide Flags:
-//       // always write only+create
-//       // if append is true->O_APPEND. if false -> O_TRUNC (overwrite).
-//       int flags = O_WRONLY | O_CREAT;
-//       if (redirect_file.append) {
-//         flags |= O_APPEND;
-//       } else {
-//         flags |= O_TRUNC;
-//       }
-//
-//       // open the file (write only, create if missing, truncate/overwrite)
-//       // 0644 gives read/write permission to user. read to others
-//       file_fd = open(redirect_file.filename.c_str(), flags, 0644);
-//
-//       if (file_fd < 0) {
-//         std::cerr << "bash: " << redirect_file.filename
-//                   << ": No such file or directory" << std::endl;
-//         // fix - Print prompt before restarting loop
-//         std::cout << "$ ";
-//         // If we dup'd but failed open, close the dup
-//         close(saved_stdout);
-//         continue;
-//       }
-//       // replace standard output (1) with out file
-//       dup2(file_fd, redirect_file.target_fd);
-//       close(file_fd); // we dont need the raw file descriptor anymore
-//     }
-//     // redirection logic end
-//
-//     // normal command execution (standard output is now pointing to the file)
-//
-//     std::string command_name = args[0];
-//
-//     if (command_name == "exit") {
-//       return 0;
-//     } else if (command_name == "echo") {
-//       // print arguments separated by space
-//       for (size_t i = 1; i < args.size(); i++) {
-//         std::cout << args[i];
-//         if (i < args.size() - 1) {
-//           std::cout << " ";
-//         }
-//       }
-//       std::cout << std::endl;
-//     } else if (command_name == "type") {
-//       if (args.size() < 2) {
-//         // just 'type' with no args, do nothing or print usage
-//       } else {
-//         std::string arg = args[1];
-//         if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd"
-//         ||
-//             arg == "cd") {
-//           std::cout << arg << " is a shell builtin" << std::endl;
-//         } else {
-//           std::string path = get_path(arg);
-//           if (!path.empty()) {
-//             std::cout << arg << " is " << path << std::endl;
-//           } else {
-//             std::cout << arg << ": not found" << std::endl;
-//           }
-//         }
-//       }
-//     } else if (command_name == "pwd") {
-//       // manual function calling
-//
-//       // std::string cwd=get_pwd();
-//
-//       // if (!cwd.empty()) {
-//       //   std::cout<<cwd<<std::endl;
-//       // }
-//       // We do NOT write 'return 0' here.
-//       // We let the loop finish so the user can type the next command.
-//
-//       // directly come from filesystem :)
-//       std::cout << fs::current_path().string() << std::endl;
-//     } else if (command_name == "cd") {
-//       if (args.size() >= 2) {
-//         builtin_cd(args[1]);
-//       } else {
-//         // 'cd' with no arguments usually goes home, but for test we can
-//         ignore
-//         // or go home
-//         builtin_cd("~");
-//       }
-//     } else {
-//
-//       // ---- RUNNING EXTERNAL PROGRAMS ----
-//       std::string path = get_path(command_name);
-//
-//       if (path.empty()) {
-//         std::cout << command_name << ": command not found" << std::endl;
-//       } else {
-//         // execute_external takes the vector, which is already correctly
-//         parsed!
-//         // it will clean arguments (without quotes) to the program.
-//         execute_external(path, args);
-//       }
-//     }
-//
-//     // restore
-//     if (saved_stdout != -1) {
-//       // restore the specific FD (stdout or stderr)
-//       dup2(saved_stdout, redirect_file.target_fd);
-//       close(saved_stdout);
-//     }
-//
-//     std::cout << "$ ";
 //   }
 // }
 
