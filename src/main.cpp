@@ -318,6 +318,7 @@ char **shell_completion(const char *text, int start, int end) {
   }
   return nullptr;
 }
+
 // AUTOCOMPLETE LOGIC END
 
 // manual implementation to get pwd without current_path() :)
@@ -342,6 +343,65 @@ char **shell_completion(const char *text, int start, int end) {
 //   }
 // }
 
+// this function runs builtins OR external commands
+// it returns true if it ran a builtin, false if it tried to run external (execv
+// usually doesn't return).
+
+bool run_command_logic(const std::vector<std::string> &args) {
+  std::string command_name = args[0];
+
+  if (command_name == "exit") {
+    // in a pipline, this exits the child (correct)
+    // in main, we handle exit separately to close the shell
+    exit(0);
+  } else if (command_name == "echo") {
+    for (size_t i = 1; i < args.size(); i++) {
+      std::cout << args[i];
+      if (i < args.size() - 1)
+        std::cout << " ";
+    }
+    std::cout << std::endl;
+    return true;
+  } else if (command_name == "type") {
+    if (args.size() > 1) {
+      std::string arg = args[1];
+      if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" ||
+          arg == "cd")
+        std::cout << arg << " is a shell builtin" << std::endl;
+      else {
+        std::string p = get_path(arg);
+        if (!p.empty())
+          std::cout << arg << " is " << p << std::endl;
+        else
+          std::cout << arg << ": not found" << std::endl;
+      }
+    }
+    return true;
+  } else if (command_name == "pwd") {
+    std::cout << fs::current_path().string() << std::endl;
+    return true;
+  } else if (command_name == "cd") {
+    if (args.size() >= 2)
+      builtin_cd(args[1]);
+    else
+      builtin_cd("~");
+    return true;
+  } else {
+    // external commands
+    std::string path = get_path(command_name);
+    if (path.empty()) {
+      std::cout << command_name << ": command not found" << std::endl;
+      // return true here so the caller knows we "handled" the error
+      // and doesn't crash, but usually for pipeline we exit(1).
+      return true;
+    } else {
+      execute_external(path, args); // this contains fork/execv for normal cases
+      return false;
+    }
+  }
+  return false;
+}
+
 void execute_pipeline(const std::vector<std::string> &left_args,
                       const std::vector<std::string> &right_args) {
   int pipefd[2];
@@ -365,23 +425,34 @@ void execute_pipeline(const std::vector<std::string> &left_args,
     close(pipefd[0]);
     close(pipefd[1]);
 
-    // find and run the Program
-    // note: we duplicate logic slightly here because we don't want to fork
-    // again
-    std::string path = get_path(left_args[0]);
-    if (path.empty()) {
-      std::cerr << left_args[0] << ": command not found" << std::endl;
-      exit(1);
-    }
+    // use the centralized logic
+    std::string cmd = left_args[0];
 
-    std::vector<char *> c_args;
-    for (const auto &arg : left_args) {
-      c_args.push_back(const_cast<char *>(arg.c_str()));
-    }
-    c_args.push_back(nullptr);
+    // SPECIAL CASE: External commands in pipeline need direct execv
+    // because execute_external() does a fork internally, which is redundant
+    // here.
+    bool is_builtin = (cmd == "echo" || cmd == "type" || cmd == "pwd" ||
+                       cmd == "cd" || cmd == "exit");
 
-    execv(path.c_str(), c_args.data());
-    exit(1); // error if execv fails
+    if (is_builtin) {
+      run_command_logic(left_args);
+      exit(0); // builtin finished, child process must finish
+    } else {
+      std::string path = get_path(cmd);
+      if (path.empty()) {
+        std::cerr << cmd << ": command not found" << std::endl;
+        exit(1);
+      }
+
+      std::vector<char *> c_args;
+      for (const auto &arg : left_args) {
+        c_args.push_back(const_cast<char *>(arg.c_str()));
+      }
+      c_args.push_back(nullptr);
+
+      execv(path.c_str(), c_args.data());
+      exit(1); // error if execv fails
+    }
   }
 
   // 2) Right Command (Reader)
@@ -396,19 +467,29 @@ void execute_pipeline(const std::vector<std::string> &left_args,
     close(pipefd[0]);
     close(pipefd[1]);
 
-    std::string path = get_path(right_args[0]);
-    if (path.empty()) {
-      std::cerr << right_args[0] << ": command not found" << std::endl;
+    std::string cmd = right_args[0];
+    bool is_builtin = (cmd == "echo" || cmd == "type" || cmd == "pwd" ||
+                       cmd == "cd" || cmd == "exit");
+
+    if (is_builtin) {
+      run_command_logic(right_args);
+      exit(0);
+    } else {
+      std::string path = get_path(cmd);
+      if (path.empty()) {
+        std::cerr << cmd << ": command not found" << std::endl;
+        exit(1);
+      }
+
+      std::vector<char *> c_args;
+      for (const auto &arg : right_args) {
+        c_args.push_back(const_cast<char *>(arg.c_str()));
+      }
+      c_args.push_back(nullptr);
+
+      execv(path.c_str(), c_args.data());
       exit(1);
     }
-    std::vector<char *> c_args;
-    for (const auto &arg : right_args) {
-      c_args.push_back(const_cast<char *>(arg.c_str()));
-    }
-    c_args.push_back(nullptr);
-
-    execv(path.c_str(), c_args.data());
-    exit(1);
   }
   // 3) Parent
   // imp: close both ends of the pipe in the parent!
@@ -515,47 +596,57 @@ int main() {
     }
 
     // 5. EXECUTE COMMANDS
-    std::string command_name = args[0];
+    // std::string command_name = args[0];
+    //
+    // if (command_name == "exit") {
+    //   return 0; // Shell exits
+    // } else if (command_name == "echo") {
+    //   for (size_t i = 1; i < args.size(); i++) {
+    //     std::cout << args[i];
+    //     if (i < args.size() - 1)
+    //       std::cout << " ";
+    //   }
+    //   std::cout << std::endl;
+    // } else if (command_name == "type") {
+    //   if (args.size() > 1) {
+    //     std::string arg = args[1];
+    //     if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd"
+    //     ||
+    //         arg == "cd")
+    //       std::cout << arg << " is a shell builtin" << std::endl;
+    //     else {
+    //       std::string p = get_path(arg);
+    //       if (!p.empty())
+    //         std::cout << arg << " is " << p << std::endl;
+    //       else
+    //         std::cout << arg << ": not found" << std::endl;
+    //     }
+    //   }
+    // } else if (command_name == "pwd") {
+    //   std::cout << fs::current_path().string() << std::endl;
+    // } else if (command_name == "cd") {
+    //   if (args.size() >= 2)
+    //     builtin_cd(args[1]);
+    //   else
+    //     builtin_cd("~");
+    // } else {
+    //   // External Program
+    //   std::string path = get_path(command_name);
+    //   if (path.empty()) {
+    //     std::cout << command_name << ": command not found" << std::endl;
+    //   } else {
+    //     execute_external(path, args);
+    //   }
+    // }
 
-    if (command_name == "exit") {
-      return 0; // Shell exits
-    } else if (command_name == "echo") {
-      for (size_t i = 1; i < args.size(); i++) {
-        std::cout << args[i];
-        if (i < args.size() - 1)
-          std::cout << " ";
-      }
-      std::cout << std::endl;
-    } else if (command_name == "type") {
-      if (args.size() > 1) {
-        std::string arg = args[1];
-        if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" ||
-            arg == "cd")
-          std::cout << arg << " is a shell builtin" << std::endl;
-        else {
-          std::string p = get_path(arg);
-          if (!p.empty())
-            std::cout << arg << " is " << p << std::endl;
-          else
-            std::cout << arg << ": not found" << std::endl;
-        }
-      }
-    } else if (command_name == "pwd") {
-      std::cout << fs::current_path().string() << std::endl;
-    } else if (command_name == "cd") {
-      if (args.size() >= 2)
-        builtin_cd(args[1]);
-      else
-        builtin_cd("~");
-    } else {
-      // External Program
-      std::string path = get_path(command_name);
-      if (path.empty()) {
-        std::cout << command_name << ": command not found" << std::endl;
-      } else {
-        execute_external(path, args);
-      }
+    // use our new centralized logic for main as well!
+    // but check for "exit" explicitly first to break the loop cleanly.
+    if (args[0] == "exit") {
+      return 0;
     }
+
+    // run command (pwd, cd, echo, type, or external)
+    run_command_logic(args);
 
     // 6. RESTORE OUTPUT
     if (saved_fd != -1) {
