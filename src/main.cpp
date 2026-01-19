@@ -367,7 +367,7 @@ bool run_command_logic(const std::vector<std::string> &args) {
     if (args.size() > 1) {
       std::string arg = args[1];
       if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" ||
-          arg == "cd")
+          arg == "cd" || arg=="history")
         std::cout << arg << " is a shell builtin" << std::endl;
       else {
         std::string p = get_path(arg);
