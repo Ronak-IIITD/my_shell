@@ -31,8 +31,10 @@ struct RedirectionInfo {
   bool append;   // true=append (>>), false=overwrite (>)
 };
 
-std::vector<std::string> builtin_commands = {"echo", "exit", "type", "pwd",
-                                             "cd"};
+std::vector<std::string> builtin_commands = {"echo", "exit", "type",
+                                             "pwd",  "cd",   "history"};
+
+std::vector<std::string> command_history;
 
 std::string get_path(std::string command) {
   const char *get_env_cstr = std::getenv("PATH");
@@ -367,7 +369,7 @@ bool run_command_logic(const std::vector<std::string> &args) {
     if (args.size() > 1) {
       std::string arg = args[1];
       if (arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" ||
-          arg == "cd" || arg=="history")
+          arg == "cd" || arg == "history")
         std::cout << arg << " is a shell builtin" << std::endl;
       else {
         std::string p = get_path(arg);
@@ -386,6 +388,11 @@ bool run_command_logic(const std::vector<std::string> &args) {
       builtin_cd(args[1]);
     else
       builtin_cd("~");
+    return true;
+  } else if (command_name == "history") {
+    for (size_t i = 0; i < command_history.size(); i++) {
+      std::cout << "  " << (i + 1) << " " << command_history[i] << std::endl;
+    }
     return true;
   } else {
     // external commands
@@ -531,6 +538,8 @@ int main() {
     // Add valid commands to history so Up-Arrow works
     if (!input_line.empty()) {
       add_history(input_cstr);
+      // store every command, even invalid ones, into out vector
+      command_history.push_back(input_line);
     }
 
     // Readline allocates memory for the input string, we must free it
