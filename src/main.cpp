@@ -390,8 +390,29 @@ bool run_command_logic(const std::vector<std::string> &args) {
       builtin_cd("~");
     return true;
   } else if (command_name == "history") {
-    for (size_t i = 0; i < command_history.size(); i++) {
-      std::cout << "  " << (i + 1) << " " << command_history[i] << std::endl;
+    size_t count = command_history.size(); // default: show all
+
+    // check if user provided a number (eg: "history 2")
+    if (args.size() > 1) {
+      try {
+        int limit = std::stoi(args[1]);
+
+        // if the limit is smaller than total history, verify where to start
+        if (limit > 0 && (size_t)limit < count) {
+          count = (size_t)limit;
+        }
+      } catch (...) {
+        // handle cases like "history abc"
+        // standard bash ususally ignores invalid args or shows usage
+      }
+    }
+
+    // calculate where to start printing
+    // if history has 10 items and we want last 2:
+    // start_index = 10-2=8. we print index 8 and 9
+    size_t start_index = command_history.size() - count;
+    for (size_t i = start_index; i < command_history.size(); i++) {
+      std::cout << "    " << (i + 1) << "  " << command_history[i] << std::endl;
     }
     return true;
   } else {
