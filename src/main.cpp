@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <fstream>
 #include <ios>
 #include <iostream>
 #include <limits.h>
@@ -390,6 +391,31 @@ bool run_command_logic(const std::vector<std::string> &args) {
       builtin_cd("~");
     return true;
   } else if (command_name == "history") {
+    // read from the file (-r)
+    if (args.size() > 1 && args[1] == "-r") {
+      if (args.size() < 3) {
+        std::cerr << "history: -r: requires an argument" << std::endl;
+        return true;
+      }
+
+      std::string filepath = args[2];
+      std::ifstream history_file(filepath);
+
+      if (!history_file.is_open()) {
+        std::cerr << "bash: history: " << filepath
+                  << ": No such file or directory" << std::endl;
+        return true;
+      }
+
+      std::string line;
+      while (std::getline(history_file, line)) {
+        if (!line.empty()) {
+          command_history.push_back(line);
+        }
+      }
+      history_file.close();
+      return true; // done (dont print anything)
+    }
     size_t count = command_history.size(); // default: show all
 
     // check if user provided a number (eg: "history 2")
