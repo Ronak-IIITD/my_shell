@@ -416,6 +416,30 @@ bool run_command_logic(const std::vector<std::string> &args) {
       history_file.close();
       return true; // done (dont print anything)
     }
+    // write to file (-w)
+    else if (args.size() > 1 && args[1] == "-w") {
+      if (args.size() > 3) {
+        std::cerr << "history: -w: requires and argument" << std::endl;
+        return true;
+      }
+      std::string filepath = args[2];
+
+      // open file for writing (Truncate existing content or creates new file)
+      std::ofstream history_file(filepath);
+
+      if (!history_file.is_open()) {
+        std::cerr << "bash: history: " << filepath << ": Cannot write to file"
+                  << std::endl;
+        return true;
+      }
+
+      // write every command in memory to the file
+      for (const auto &cmd : command_history) {
+        history_file << cmd << std::endl;
+      }
+      history_file.close();
+      return true;
+    }
     size_t count = command_history.size(); // default: show all
 
     // check if user provided a number (eg: "history 2")
