@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cinttypes>
+#include <complex>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <ios>
 #include <iostream>
+#include <iterator>
 #include <limits.h>
 #include <new>
 #include <ostream>
@@ -36,6 +38,8 @@ std::vector<std::string> builtin_commands = {"echo", "exit", "type",
                                              "pwd",  "cd",   "history"};
 
 std::vector<std::string> command_history;
+
+size_t history_file_index = 0;
 
 std::string get_path(std::string command) {
   const char *get_env_cstr = std::getenv("PATH");
@@ -419,7 +423,7 @@ bool run_command_logic(const std::vector<std::string> &args) {
     // write to file (-w)
     else if (args.size() > 1 && args[1] == "-w") {
       if (args.size() > 3) {
-        std::cerr << "history: -w: requires and argument" << std::endl;
+        std::cerr << "history: -w: requires an argument" << std::endl;
         return true;
       }
       std::string filepath = args[2];
@@ -438,6 +442,32 @@ bool run_command_logic(const std::vector<std::string> &args) {
         history_file << cmd << std::endl;
       }
       history_file.close();
+      return true;
+    } // append to file (-a)
+    else if (args.size() > 1 && args[1] == "-a") {
+      if (args.size() > 3) {
+        std::cerr << "history: -a: requires an argument" << std::endl;
+        return true;
+      }
+      std::string filepath = args[2];
+
+      // open in append mode (std::ios::app)
+      std::ofstream history_file(filepath, std::ios::app);
+
+      if (!history_file.is_open()) {
+        std::cerr << "bash: history: " << filepath << ": Cannot write to file"
+                  << std::endl;
+        return true;
+      }
+
+      // only write commands that haven't been written yet
+      for (size_t i = history_file_index; i < command_history.size(); i++) {
+        history_file << command_history[i] << std::endl;
+      }
+      history_file.close();
+
+      // update the index so we don't write these lines again next time
+      history_file_index = command_history.size();
       return true;
     }
     size_t count = command_history.size(); // default: show all
