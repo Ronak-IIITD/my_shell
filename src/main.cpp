@@ -618,6 +618,25 @@ void execute_n_pipeline(const std::vector<std::vector<std::string>> &commands) {
   }
 }
 
+// --- Helper: Save History on Exit ---
+void save_history() {
+  // 1. Check if HISTFILE is set
+  const char *histfile_env = std::getenv("HISTFILE");
+  if (!histfile_env)
+    return; // Do nothing if variable isn't set
+
+  // 2. Open file in APPEND mode
+  std::ofstream hist_file(histfile_env, std::ios::app);
+
+  if (hist_file.is_open()) {
+    // 3. Write only the new commands (from index to end)
+    for (size_t i = history_file_index; i < command_history.size(); i++) {
+      hist_file << command_history[i] << std::endl;
+    }
+    hist_file.close();
+  }
+}
+
 int main() {
   // Use unitbuf to ensure output is flushed immediately
   std::cout << std::unitbuf;
@@ -725,6 +744,7 @@ int main() {
     // use our new centralized logic for main as well!
     // but check for "exit" explicitly first to break the loop cleanly.
     if (args[0] == "exit") {
+      save_history();
       return 0;
     }
 
@@ -737,6 +757,7 @@ int main() {
       close(saved_fd);
     }
   }
+  save_history();
 
   return 0;
 }
