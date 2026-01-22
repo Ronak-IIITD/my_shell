@@ -623,6 +623,25 @@ int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  // load history from HISTFILE on startup
+  const char *histfile_env = std::getenv("HISTFILE");
+  if (histfile_env) {
+    std::ifstream hist_file(histfile_env);
+    if (hist_file.is_open()) {
+      std::string line;
+      while (std::getline(hist_file, line)) {
+        if (!line.empty()) {
+          command_history.push_back(line);
+        }
+      }
+      hist_file.close();
+
+      // Important: mark these lines as "already written"
+      // so 'history -a' doesn't duplicate them later
+      history_file_index = command_history.size();
+    }
+  }
+
   // 1. REGISTER AUTOCOMPLETE
   // Tell readline to use our custom function when TAB is pressed
   rl_attempted_completion_function = shell_completion;
