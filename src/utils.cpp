@@ -10,6 +10,11 @@ namespace fs = std::filesystem;
 namespace shell {
 
 std::string get_path(std::string_view command) noexcept {
+  // Early return for empty command
+  if (command.empty()) {
+    return "";
+  }
+  
   const char* get_env_cstr = std::getenv("PATH");
   if (get_env_cstr == nullptr) {
     return ""; // PATH not set!, can't find command
@@ -22,9 +27,14 @@ std::string get_path(std::string_view command) noexcept {
     fs::path full_path = path_dir;
     full_path /= command; // append command to directory (e.g., /usr/bin/ + ls)
 
-    // Check if file exists and is executable
-    if (fs::exists(full_path) && access(full_path.c_str(), X_OK) == 0) {
-      return full_path.string();
+    try {
+      // Check if file exists and is executable
+      if (fs::exists(full_path) && access(full_path.c_str(), X_OK) == 0) {
+        return full_path.string();
+      }
+    } catch (...) {
+      // Ignore filesystem errors for invalid paths
+      continue;
     }
   }
   return "";
