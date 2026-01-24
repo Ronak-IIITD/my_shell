@@ -3,7 +3,7 @@
 namespace shell {
 
 // --- PARSER: Handle Single Quotes, Double Quotes, and Escapes ---
-std::vector<std::string> split_line(const std::string& input) {
+std::vector<std::string> split_line(std::string_view input) {
   std::vector<std::string> args;
   std::string current_tokens;
   bool in_single_quotes = false; // are we currently inside '...'?

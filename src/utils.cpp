@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 namespace shell {
 
-std::string get_path(const std::string& command) {
+std::string get_path(std::string_view command) noexcept {
   const char* get_env_cstr = std::getenv("PATH");
   if (get_env_cstr == nullptr) {
     return ""; // PATH not set!, can't find command
@@ -31,11 +31,11 @@ std::string get_path(const std::string& command) {
 }
 
 // Consistent error reporting
-void print_error(const std::string& command, const std::string& message) {
+void print_error(std::string_view command, std::string_view message) noexcept {
   std::cerr << command << ": " << message << std::endl;
 }
 
-void print_error(const std::string& message) {
+void print_error(std::string_view message) noexcept {
   std::cerr << "shell: " << message << std::endl;
 }
 

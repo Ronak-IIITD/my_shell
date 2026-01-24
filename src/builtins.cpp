@@ -15,7 +15,7 @@ namespace shell {
 static const std::vector<std::string> builtin_names = {
     "echo", "exit", "type", "pwd", "cd", "history"};
 
-bool is_builtin(const std::string& command) {
+bool is_builtin(std::string_view command) noexcept {
   for (const auto& builtin : builtin_names) {
     if (command == builtin) {
       return true;
@@ -56,8 +56,8 @@ int run_builtin(const std::vector<std::string>& args) {
   return -1; // not a builtin
 }
 
-int builtin_cd(const std::string& path) {
-  std::string resolved_path = path;
+int builtin_cd(std::string_view path) {
+  std::string resolved_path{path};
 
   // Handle home directory expansion
   if (path == "~") {
@@ -65,11 +65,11 @@ int builtin_cd(const std::string& path) {
     if (home) {
       resolved_path = home;
     }
-  } else if (path.substr(0, 2) == "~/") {
+  } else if (path.size() >= 2 && path.substr(0, 2) == "~/") {
     const char* home = std::getenv("HOME");
     if (home) {
       // replace "~" with the actual home path
-      resolved_path = std::string(home) + path.substr(1);
+      resolved_path = std::string(home) + std::string(path.substr(1));
     }
   }
 
@@ -109,7 +109,7 @@ int builtin_echo(const std::vector<std::string>& args) {
   return EXIT_SUCCESS_CODE;
 }
 
-int builtin_type(const std::string& arg) {
+int builtin_type(std::string_view arg) {
   if (is_builtin(arg)) {
     std::cout << arg << " is a shell builtin" << std::endl;
   } else {
@@ -125,7 +125,7 @@ int builtin_type(const std::string& arg) {
 }
 
 int builtin_history(const std::vector<std::string>& args) {
-  auto& command_history = get_command_history();
+  const auto& command_history = get_command_history();
   
   // Read from file (-r)
   if (args.size() > 1 && args[1] == "-r") {
@@ -223,7 +223,7 @@ int builtin_history(const std::vector<std::string>& args) {
   return EXIT_SUCCESS_CODE;
 }
 
-void builtin_exit() {
+void builtin_exit() noexcept {
   save_history_to_file();
   exit(0);
 }

@@ -4,6 +4,7 @@
 #include "history.h"
 #include "parser.h"
 #include "redirection.h"
+#include "utils.h"
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
@@ -43,22 +44,27 @@ int main() {
   // Initialize readline completion
   shell::init_completion();
 
-  char* input_cstr;
-
   // Main REPL loop
   // readline("$ ") prints the prompt and handles user input (including
   // Tab/Arrow keys) It returns nullptr when the user presses Ctrl+D (EOF)
-  while ((input_cstr = readline("$ ")) != nullptr) {
-    std::string input_line(input_cstr);
+  while (true) {
+    // Use smart pointer for automatic memory management
+    shell::ReadlinePtr input(readline("$ "));
+    
+    if (!input) {
+      // Ctrl+D pressed (EOF)
+      break;
+    }
+    
+    std::string input_line(input.get());
 
     // Add valid commands to history so Up-Arrow works
     if (!input_line.empty()) {
-      add_history(input_cstr);
+      add_history(input.get());
       shell::add_to_history(input_line);
     }
 
-    // Readline allocates memory for the input string, we must free it
-    free(input_cstr);
+    // Smart pointer automatically frees memory when it goes out of scope
 
     // Skip empty lines
     if (input_line.empty()) {

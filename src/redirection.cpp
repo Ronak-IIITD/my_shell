@@ -54,8 +54,13 @@ int apply_redirection(const RedirectionInfo& redir) {
     return -1; // no redirection
   }
 
-  // Save original stream
-  int saved_fd = dup(redir.target_fd);
+  // Save original stream using RAII wrapper
+  FileDescriptor saved_fd(dup(redir.target_fd));
+  
+  if (!saved_fd.is_valid()) {
+    print_error("shell", "Failed to duplicate file descriptor");
+    return -1;
+  }
 
   // Determine flags: Write Only + Create + (Append OR Truncate)
   int flags = O_WRONLY | O_CREAT;
@@ -65,26 +70,26 @@ int apply_redirection(const RedirectionInfo& redir) {
     flags |= O_TRUNC;
   }
 
-  // Open file (0644 = rw-r--r--)
-  int file_fd = open(redir.filename.c_str(), flags, 0644);
+  // Open file (0644 = rw-r--r--) using RAII wrapper
+  FileDescriptor file_fd(open(redir.filename.c_str(), flags, 0644));
 
-  if (file_fd < 0) {
+  if (!file_fd.is_valid()) {
     print_error("shell", redir.filename + ": No such file or directory");
-    close(saved_fd);
     return -1;
   }
 
   // Apply Redirection
-  dup2(file_fd, redir.target_fd);
-  close(file_fd);
+  dup2(file_fd.get(), redir.target_fd);
+  // file_fd automatically closed here by RAII
 
-  return saved_fd;
+  return saved_fd.release(); // Release ownership to caller
 }
 
 void restore_redirection(int saved_fd, int target_fd) {
   if (saved_fd != -1) {
-    dup2(saved_fd, target_fd);
-    close(saved_fd);
+    FileDescriptor fd(saved_fd); // RAII wrapper takes ownership
+    dup2(fd.get(), target_fd);
+    // fd automatically closed here by RAII destructor
   }
 }
 

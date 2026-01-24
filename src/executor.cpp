@@ -13,9 +13,18 @@ namespace shell {
 void execute_external(const std::string& path,
                       const std::vector<std::string>& parts) {
   // Convert std::vector<std::string> to char* array (c-style)
+  // Create mutable copies for execv which requires char* const*
+  std::vector<std::vector<char>> arg_storage;
   std::vector<char*> c_args;
+  
+  arg_storage.reserve(parts.size());
+  c_args.reserve(parts.size() + 1);
+  
   for (const auto& part : parts) {
-    c_args.push_back(const_cast<char*>(part.c_str()));
+    // Create mutable copy
+    arg_storage.emplace_back(part.begin(), part.end());
+    arg_storage.back().push_back('\0');
+    c_args.push_back(arg_storage.back().data());
   }
   c_args.push_back(nullptr); // null terminates the list
 
@@ -135,10 +144,17 @@ void execute_pipeline(const std::vector<std::vector<std::string>>& commands) {
           exit(EXIT_COMMAND_NOT_FOUND);
         }
 
-        // Convert to C-style args
+        // Convert to C-style args - create mutable copies
+        std::vector<std::vector<char>> arg_storage;
         std::vector<char*> c_args;
+        
+        arg_storage.reserve(cmd_args.size());
+        c_args.reserve(cmd_args.size() + 1);
+        
         for (const auto& arg : cmd_args) {
-          c_args.push_back(const_cast<char*>(arg.c_str()));
+          arg_storage.emplace_back(arg.begin(), arg.end());
+          arg_storage.back().push_back('\0');
+          c_args.push_back(arg_storage.back().data());
         }
         c_args.push_back(nullptr);
 

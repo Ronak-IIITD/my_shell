@@ -55,21 +55,21 @@ void save_history_to_file() {
   }
 }
 
-void add_to_history(const std::string& command) {
+void add_to_history(std::string_view command) {
   if (!command.empty()) {
-    command_history.push_back(command);
+    command_history.emplace_back(command);
   }
 }
 
-std::vector<std::string>& get_command_history() {
+const std::vector<std::string>& get_command_history() noexcept {
   return command_history;
 }
 
-size_t get_history_file_index() {
+size_t get_history_file_index() noexcept {
   return history_file_index;
 }
 
-void set_history_file_index(size_t index) {
+void set_history_file_index(size_t index) noexcept {
   history_file_index = index;
 }
 
