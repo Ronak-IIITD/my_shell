@@ -1045,3 +1045,7 @@ dkms.conf
 *.dis
 
 vcpkg_installed
+# Project-specific files (CodeCrafters build artifacts)
+shell
+  implemented
+REFACTORING.md
