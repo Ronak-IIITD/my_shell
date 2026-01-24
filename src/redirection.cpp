@@ -1,6 +1,6 @@
 #include "redirection.h"
+#include "utils.h"
 #include <fcntl.h>
-#include <iostream>
 #include <unistd.h>
 
 namespace shell {
@@ -69,8 +69,7 @@ int apply_redirection(const RedirectionInfo& redir) {
   int file_fd = open(redir.filename.c_str(), flags, 0644);
 
   if (file_fd < 0) {
-    std::cerr << "bash: " << redir.filename << ": No such file or directory"
-              << std::endl;
+    print_error("shell", redir.filename + ": No such file or directory");
     close(saved_fd);
     return -1;
   }

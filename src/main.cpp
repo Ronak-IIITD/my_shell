@@ -4,6 +4,7 @@
 #include "history.h"
 #include "parser.h"
 #include "redirection.h"
+#include <csignal>
 #include <cstdlib>
 #include <iostream>
 #include <readline/history.h>
@@ -11,10 +12,29 @@
 #include <string>
 #include <vector>
 
+// Signal handler for Ctrl+C (SIGINT)
+// Instead of terminating the shell, we just print a newline and return to prompt
+void sigint_handler(int sig) {
+  (void)sig; // Suppress unused parameter warning
+  std::cout << std::endl;
+  // Reset readline to show a fresh prompt
+  rl_on_new_line();
+  rl_replace_line("", 0);
+  rl_redisplay();
+}
+
 int main() {
   // Use unitbuf to ensure output is flushed immediately
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+
+  // Set up signal handler for Ctrl+C
+  // This prevents Ctrl+C from killing the shell
+  struct sigaction sa;
+  sa.sa_handler = sigint_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  sigaction(SIGINT, &sa, nullptr);
 
   // Initialize history management
   shell::init_history();

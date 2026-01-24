@@ -25,12 +25,17 @@ void execute_external(const std::string& path,
   if (pid == 0) {
     // Child process
     execv(path.c_str(), c_args.data());
-    exit(1); // Should only reach here if execv fails
+    // If execv returns, it failed
+    print_error(parts[0], "execution failed");
+    exit(EXIT_COMMAND_NOT_FOUND);
   } else if (pid > 0) {
-    // Parent process
-    wait(nullptr);
+    // Parent process - wait for child
+    int status;
+    waitpid(pid, &status, 0);
+    // Could check WIFEXITED(status) and WEXITSTATUS(status) here
   } else {
-    std::cerr << "Fork Failed" << std::endl;
+    // Fork failed
+    print_error("fork", "failed to create child process");
   }
 }
 
@@ -43,14 +48,17 @@ bool execute_command(const std::vector<std::string>& args) {
 
   // Check if it's a builtin
   if (is_builtin(command_name)) {
-    run_builtin(args);
+    int exit_code = run_builtin(args);
+    // For now, we don't do anything with the exit code in interactive mode
+    // but it's available for future use (e.g., scripting mode with set -e)
+    (void)exit_code;
     return true;
   }
 
   // External command
   std::string path = get_path(command_name);
   if (path.empty()) {
-    std::cout << command_name << ": command not found" << std::endl;
+    print_error(command_name, "command not found");
     return true; // handled the error
   }
 
@@ -70,12 +78,31 @@ void execute_pipeline(const std::vector<std::vector<std::string>>& commands) {
     // Create a pipe for the *next* connection (unless we are the last command)
     if (!is_last) {
       if (pipe(pipefd) == -1) {
-        perror("pipe");
+        print_error("pipe", "failed to create pipe");
+        // Clean up any existing children
+        for (pid_t p : pids) {
+          waitpid(p, nullptr, 0);
+        }
         return;
       }
     }
 
     pid_t pid = fork();
+    
+    if (pid == -1) {
+      // Fork failed
+      print_error("fork", "failed to create child process");
+      if (!is_last) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+      }
+      // Clean up existing children
+      for (pid_t p : pids) {
+        waitpid(p, nullptr, 0);
+      }
+      return;
+    }
+    
     if (pid == 0) {
       // --- CHILD PROCESS ---
 
@@ -98,14 +125,14 @@ void execute_pipeline(const std::vector<std::vector<std::string>>& commands) {
 
       // Check for Builtins
       if (is_builtin(cmd)) {
-        run_builtin(cmd_args);
-        exit(0); // Important: Child must exit after builtin finishes
+        int exit_code = run_builtin(cmd_args);
+        exit(exit_code); // Important: Child must exit after builtin finishes
       } else {
         // External Command
         std::string path = get_path(cmd);
         if (path.empty()) {
-          std::cerr << cmd << ": command not found" << std::endl;
-          exit(1);
+          print_error(cmd, "command not found");
+          exit(EXIT_COMMAND_NOT_FOUND);
         }
 
         // Convert to C-style args
@@ -116,7 +143,9 @@ void execute_pipeline(const std::vector<std::vector<std::string>>& commands) {
         c_args.push_back(nullptr);
 
         execv(path.c_str(), c_args.data());
-        exit(1); // Exec failed
+        // If we reach here, execv failed
+        print_error(cmd, "execution failed");
+        exit(EXIT_COMMAND_NOT_FOUND);
       }
     }
 
@@ -137,7 +166,9 @@ void execute_pipeline(const std::vector<std::vector<std::string>>& commands) {
 
   // Wait for ALL children to finish
   for (pid_t p : pids) {
-    waitpid(p, nullptr, 0);
+    int status;
+    waitpid(p, &status, 0);
+    // Could track exit statuses here if needed
   }
 }
 

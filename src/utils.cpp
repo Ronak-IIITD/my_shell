@@ -1,6 +1,7 @@
 #include "utils.h"
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <sstream>
 #include <unistd.h>
 
@@ -27,6 +28,15 @@ std::string get_path(const std::string& command) {
     }
   }
   return "";
+}
+
+// Consistent error reporting
+void print_error(const std::string& command, const std::string& message) {
+  std::cerr << command << ": " << message << std::endl;
+}
+
+void print_error(const std::string& message) {
+  std::cerr << "shell: " << message << std::endl;
 }
 
 } // namespace shell
