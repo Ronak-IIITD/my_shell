@@ -43,7 +43,8 @@ size_t history_file_index = 0;
 
 // cp command implementation - copy files and directories
 // Supports: cp [options] source dest
-// Options: -r (recursive), -f (force), -i (interactive), -v (verbose), -p (preserve)
+// Options: -r (recursive), -f (force), -i (interactive), -v (verbose), -p
+// (preserve)
 
 void builtin_cp(const std::vector<std::string> &args) {
   bool opt_recursive = false;
@@ -51,114 +52,116 @@ void builtin_cp(const std::vector<std::string> &args) {
   bool opt_interactive = false;
   bool opt_verbose = false;
   bool opt_preserve = false;
-  
+
   std::vector<std::string> sources;
   std::string destination;
-  
+
   // Parse options and arguments
   size_t i = 1;
   while (i < args.size()) {
     std::string arg = args[i];
-    
+
     // Stop parsing options if we hit a non-option argument
     if (arg.empty() || arg[0] != '-') {
       // This is a source or destination
       break;
     }
-    
+
     // Handle -- (end of options)
     if (arg == "--") {
       i++;
       break;
     }
-    
+
     // Parse individual options
     for (size_t j = 1; j < arg.size(); j++) {
       char c = arg[j];
       switch (c) {
-        case 'r':
-        case 'R':
-          opt_recursive = true;
-          break;
-        case 'f':
-          opt_force = true;
-          break;
-        case 'i':
-          opt_interactive = true;
-          break;
-        case 'v':
-          opt_verbose = true;
-          break;
-        case 'p':
-          opt_preserve = true;
-          break;
-        default:
-          std::cerr << "cp: invalid option -- '" << c << "'" << std::endl;
-          std::cerr << "Try 'cp --help' for more information." << std::endl;
-          return;
+      case 'r':
+      case 'R':
+        opt_recursive = true;
+        break;
+      case 'f':
+        opt_force = true;
+        break;
+      case 'i':
+        opt_interactive = true;
+        break;
+      case 'v':
+        opt_verbose = true;
+        break;
+      case 'p':
+        opt_preserve = true;
+        break;
+      default:
+        std::cerr << "cp: invalid option -- '" << c << "'" << std::endl;
+        std::cerr << "Try 'cp --help' for more information." << std::endl;
+        return;
       }
     }
     i++;
   }
-  
+
   // Collect remaining arguments as sources and destination
   while (i < args.size()) {
     sources.push_back(args[i]);
     i++;
   }
-  
+
   // Validate arguments
   if (sources.empty()) {
     std::cerr << "cp: missing file operand" << std::endl;
     std::cerr << "Try 'cp --help' for more information." << std::endl;
     return;
   }
-  
+
   if (sources.size() == 1) {
     std::cerr << "cp: missing destination file operand" << std::endl;
     std::cerr << "Try 'cp --help' for more information." << std::endl;
     return;
   }
-  
+
   // Last argument is the destination
   destination = sources.back();
   sources.pop_back();
-  
+
   // Check if destination is a directory
   bool dest_is_dir = fs::exists(destination) && fs::is_directory(destination);
-  
+
   // Process each source
   for (const auto &src : sources) {
     fs::path src_path(src);
     fs::path dest_path(destination);
-    
+
     // Check if source exists
     if (!fs::exists(src_path)) {
-      std::cerr << "cp: cannot stat '" << src << "': No such file or directory" << std::endl;
+      std::cerr << "cp: cannot stat '" << src << "': No such file or directory"
+                << std::endl;
       continue;
     }
-    
+
     // Determine if source is directory or file
     bool src_is_dir = fs::is_directory(src_path);
-    
+
     // Handle directory copy
     if (src_is_dir) {
       if (!opt_recursive) {
-        std::cerr << "cp: -r not specified; omitting directory '" << src << "'" << std::endl;
+        std::cerr << "cp: -r not specified; omitting directory '" << src << "'"
+                  << std::endl;
         continue;
       }
-      
-      // If destination doesn't exist as a dir, or we have multiple sources, 
+
+      // If destination doesn't exist as a dir, or we have multiple sources,
       // the destination should be a directory
       if (!dest_is_dir && sources.size() > 1) {
         dest_is_dir = true;
       }
-      
+
       if (dest_is_dir) {
         // Copy into destination directory
         dest_path = dest_path / src_path.filename();
       }
-      
+
       // Interactive mode: ask before overwriting
       if (opt_interactive && fs::exists(dest_path)) {
         std::cout << "cp: overwrite '" << dest_path << "'? ";
@@ -167,44 +170,46 @@ void builtin_cp(const std::vector<std::string> &args) {
           continue;
         }
       }
-      
+
       // Force mode: remove destination if it exists
       if (opt_force && fs::exists(dest_path)) {
         try {
           fs::remove_all(dest_path);
         } catch (const fs::filesystem_error &e) {
-          std::cerr << "cp: cannot remove '" << dest_path << "': " << e.what() << std::endl;
+          std::cerr << "cp: cannot remove '" << dest_path << "': " << e.what()
+                    << std::endl;
           continue;
         }
       }
-      
+
       // Copy directory recursively
       try {
         fs::copy_options copy_opts = fs::copy_options::recursive |
                                      fs::copy_options::overwrite_existing |
                                      fs::copy_options::skip_existing;
-        
+
         if (opt_preserve) {
           copy_opts |= fs::copy_options::copy_symlinks;
         }
-        
+
         fs::copy(src_path, dest_path, copy_opts);
-        
+
         if (opt_verbose) {
           std::cout << "'" << src << "' -> '" << dest_path << "'" << std::endl;
         }
       } catch (const fs::filesystem_error &e) {
-        std::cerr << "cp: cannot copy '" << src << "': " << e.what() << std::endl;
+        std::cerr << "cp: cannot copy '" << src << "': " << e.what()
+                  << std::endl;
       }
     } else {
       // Source is a regular file
       fs::path final_dest = dest_path;
-      
+
       // If destination is a directory, append source filename
       if (dest_is_dir) {
         final_dest = dest_path / src_path.filename();
       }
-      
+
       // Interactive mode: ask before overwriting
       if (opt_interactive && fs::exists(final_dest)) {
         std::cout << "cp: overwrite '" << final_dest << "'? ";
@@ -213,29 +218,31 @@ void builtin_cp(const std::vector<std::string> &args) {
           continue;
         }
       }
-      
+
       // Force mode: remove destination if it exists
       if (opt_force && fs::exists(final_dest)) {
         try {
           fs::remove(final_dest);
         } catch (const fs::filesystem_error &e) {
-          std::cerr << "cp: cannot remove '" << final_dest << "': " << e.what() << std::endl;
+          std::cerr << "cp: cannot remove '" << final_dest << "': " << e.what()
+                    << std::endl;
           continue;
         }
       }
-      
+
       // Copy the file
       try {
-        // copy_file supports overwrite semantics; symlink behavior is handled in
-        // recursive directory copy path above.
+        // copy_file supports overwrite semantics; symlink behavior is handled
+        // in recursive directory copy path above.
         fs::copy_options copy_opts = fs::copy_options::overwrite_existing;
         fs::copy_file(src_path, final_dest, copy_opts);
-        
+
         if (opt_verbose) {
           std::cout << "'" << src << "' -> '" << final_dest << "'" << std::endl;
         }
       } catch (const fs::filesystem_error &e) {
-        std::cerr << "cp: cannot copy '" << src << "': " << e.what() << std::endl;
+        std::cerr << "cp: cannot copy '" << src << "': " << e.what()
+                  << std::endl;
       }
     }
   }
@@ -515,34 +522,39 @@ char *command_generator(const char *text, int state) {
 }
 
 // filename generator
-//this handles autocompleting file names in the current directory
+// this handles autocompleting file names in the current directory
 char *filename_generator(const char *text, int state) {
   static std::vector<std::string> matches;
-  static size_t match_index=0;
+  static size_t match_index = 0;
 
-  if (state==0) {
+  if (state == 0) {
     matches.clear();
-    match_index=0;
-    
+    match_index = 0;
+
     std::string text_str(text);
 
     try {
-      //itereate over files in the current directory
+      // iterate over files in the current directory
       for (const auto &entry : fs::directory_iterator(fs::current_path())) {
-        std::string filename=entry.path().filename().string();
+        std::string filename = entry.path().filename().string();
 
-        //if the file starts with the text user typed
-        if (filename.find(text_str)==0) {
-          matches.push_back(filename);
+        // if the file starts with the text user typed
+        if (filename.find(text_str) == 0) {
+          // add trailing slash for directories
+          if (fs::is_directory(entry.path())) {
+            matches.push_back(filename + "/");
+          } else {
+            matches.push_back(filename);
+          }
         }
       }
-      //sort alphabetically to ensure conisistent results
-      std::sort(matches.begin(),matches.end());
-    } catch(...) {
-      //ignore permission/filesystem errors
+      // sort alphabetically to ensure conisistent results
+      std::sort(matches.begin(), matches.end());
+    } catch (...) {
+      // ignore permission/filesystem errors
     }
   }
-  //return the next match in our list
+  // return the next match in our list
   if (match_index < matches.size()) {
     return strdup(matches[match_index++].c_str());
   }
@@ -552,17 +564,37 @@ char *filename_generator(const char *text, int state) {
 // 2) The Hook
 // this function tells readline what generator to use based on cursor position
 char **shell_completion(const char *text, int start, int end) {
-  //prevent readline from falling back to its own default completion
-  rl_attempted_completion_over=1;
+  // prevent readline from falling back to its own default completion
+  rl_attempted_completion_over = 1;
 
-  //start == 0 means this is the first word (the command)
-  if (start==0) {
+  // start == 0 means this is the first word (the command)
+  if (start == 0) {
     return rl_completion_matches(text, command_generator);
   }
-  //start>0 means this is an argument (a file)
+  // start>0 means this is an argument (a file)
   else {
     return rl_completion_matches(text, filename_generator);
   }
+}
+
+// custom display for multiple matches
+// this overrides Readline's default column printing for Double-Tab
+void custom_display_matches(char **matches, int num_matches, int max_lenght) {
+  std::cout << std::endl; // move to a new line
+
+  // matches[0] is the longest common prefix, so we skip it
+  //  the actual matches start at index 1
+  for (int i = 1; i <= num_matches; i++) {
+    std::cout << matches[i];
+    if (i < num_matches) {
+      std::cout << "  "; // two spaces between entries
+    }
+  }
+  std::cout << std::endl;
+
+  // tell readline to redraw the prompt and the text the user already typed
+  rl_on_new_line();
+  rl_redisplay();
 }
 
 // AUTOCOMPLETE LOGIC END
@@ -570,11 +602,11 @@ char **shell_completion(const char *text, int start, int end) {
 // manual implementation to get pwd without current_path() :)
 
 std::string get_pwd() {
-  // PATH_MAX is usually defined in limits.h (often 4096 bytes)
-  // If not defined, we fallback to 4096.
-  #ifndef PATH_MAX
-  #define PATH_MAX 4096
-  #endif
+// PATH_MAX is usually defined in limits.h (often 4096 bytes)
+// If not defined, we fallback to 4096.
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
   char buffer[PATH_MAX];
 
@@ -588,7 +620,7 @@ std::string get_pwd() {
   //     return "";
   //   }
   // }
-  
+
   if (getcwd(buffer, sizeof(buffer)) != nullptr) {
     return std::string(buffer);
   } else {
@@ -910,6 +942,9 @@ int main() {
   // 1. REGISTER AUTOCOMPLETE
   // Tell readline to use our custom function when TAB is pressed
   rl_attempted_completion_function = shell_completion;
+
+  // tell readline how to print double tab matches
+  rl_completion_display_matches_hook = custom_display_matches;
 
   char *input_cstr;
 
