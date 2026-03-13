@@ -25,6 +25,7 @@
 #include <system_error>
 #include <unistd.h>
 #include <vector>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
@@ -378,12 +379,13 @@ std::vector<std::string> split_line(const std::string &input) {
       }
       continue;
     }
-    // 2) handle quotes and spaces
+    // 2) handle quotes and unquoted whitespace separators
     if (c == '\'' && !in_double_quotes) {
       in_single_quotes = !in_single_quotes;
     } else if (c == '"' && !in_single_quotes) {
       in_double_quotes = !in_double_quotes;
-    } else if (c == ' ' && !in_single_quotes && !in_double_quotes) {
+    } else if (std::isspace(static_cast<unsigned char>(c)) && !in_single_quotes &&
+           !in_double_quotes) {
       if (!current_tokens.empty()) {
         args.push_back(current_tokens);
         current_tokens.clear();

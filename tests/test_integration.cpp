@@ -92,10 +92,11 @@ TEST_CASE("Integration - Complex quote parsing", "[integration]") {
     SECTION("Complex command with many quote types") {
         auto tokens = split_line("echo 'single' \"double\" unquoted 'mix'\"ed\"");
         
-        REQUIRE(tokens.size() == 4);
+        REQUIRE(tokens.size() == 5);
         REQUIRE(tokens[1] == "single");
         REQUIRE(tokens[2] == "double");
         REQUIRE(tokens[3] == "unquoted");
+        REQUIRE(tokens[4] == "mixed");
     }
 }
 
